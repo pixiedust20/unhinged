@@ -147,7 +147,15 @@ export default function GeneratePage() {
       if (done) break;
       html += decoder.decode(value, { stream: true });
     }
-    return html.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '').trim();
+    html = html.trim();
+    html = html.replace(/^```html?s*/i, "");
+    html = html.replace(/s*```s*$/i, "");
+    html = html.replace(/^```s*/i, "");
+    const firstTag = html.indexOf("<");
+    if (firstTag > 0) html = html.substring(firstTag);
+    const lastClose = html.lastIndexOf(">");
+    if (lastClose > 0 && lastClose < html.length - 1) html = html.substring(0, lastClose + 1);
+    return html.trim();
   }
 
   async function buildAll() {
