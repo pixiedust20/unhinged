@@ -7,60 +7,22 @@ export async function POST(request) {
     return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }
 
-  const systemPrompt = `You are a world-class creative director who specializes in job application strategy. Your job is to analyze a candidate's resume and a job description, then create a detailed creative brief for a landing page.
-
-You must respond with ONLY valid JSON — no markdown, no code blocks, no explanation. Just the raw JSON object.
-
-The JSON must have this exact structure:
-{
-  "headline": "The hero headline for the page (specific to this company, not generic)",
-  "subheadline": "1-2 sentences expanding on the headline",
-  "hook": "The core narrative angle — what makes this candidate's story compelling for THIS specific role",
-  "colorPalette": {
-    "primary": "#hex — the dominant brand color (research the company)",
-    "secondary": "#hex — complementary accent",
-    "background": "#hex — page background",
-    "text": "#hex — main text color",
-    "muted": "#hex — secondary text"
-  },
-  "fonts": {
-    "headline": "Google Font name for headlines",
-    "body": "Google Font name for body text",
-    "mono": "Google Font name for labels/code"
-  },
-  "sections": [
-    { "title": "Section name", "purpose": "What this section accomplishes", "keyContent": "Specific content to include" }
-  ],
-  "metrics": [
-    { "number": "$1.71M", "label": "Pipeline attributed", "context": "How this relates to the JD" }
-  ],
-  "experienceMatch": [
-    { "requirement": "JD requirement", "candidateProof": "Matching experience with specific metric" }
-  ],
-  "ninetyDayPlan": {
-    "days30": ["Specific action 1", "Specific action 2", "Specific action 3"],
-    "days60": ["Specific action 1", "Specific action 2", "Specific action 3"],
-    "days90": ["Specific action 1", "Specific action 2", "Specific action 3"]
-  },
-  "toneSample": "A 2-3 sentence sample paragraph showing exactly how the copy will sound on the final page"
-}`;
-
   const vibeInstructions = {
-    boardroom: 'VIBE: Boardroom — The page should feel like a McKinsey presentation. Clean, minimal, data-forward. Suggest serif + clean sans fonts. Monochromatic colors. The headline should let a metric do the talking. Tone sample should sound authoritative and measured.',
-    challenger: 'VIBE: Challenger — The page should feel like a Nike campaign. Bold, high-contrast, commanding. Suggest heavy display fonts. Dark background with one bright accent. The headline should be a punchy, direct statement. Tone sample should sound confident and metric-heavy with short sentences.',
-    showstopper: 'VIBE: Showstopper — The page should feel like an Awwwards site. Brand-matched, interactive, editorial. Try to match the company actual fonts and colors. The headline should tell a story specific to the company. Tone sample should be personality-forward but professional.',
-    sendhelp: 'VIBE: Send Help — The page should feel like a creative fever dream (but gorgeous). Unexpected font pairings, bold colors, breaking conventions. The headline should be theatrical and witty. Tone sample should be funny and self-aware while still selling skills.',
+    boardroom: 'VIBE: Boardroom — McKinsey presentation feel. Clean, minimal, data-forward. Serif + clean sans fonts. Monochromatic colors. Headline lets a metric do the talking. Tone: authoritative, measured.',
+    challenger: 'VIBE: Challenger — Nike campaign feel. Bold, high-contrast, commanding. Heavy display fonts. Dark bg, bright accent. Headline is punchy and direct. Tone: confident, metric-heavy, short sentences.',
+    showstopper: 'VIBE: Showstopper — Awwwards site feel. Brand-matched, interactive, editorial. Match company fonts/colors. Headline tells a story. Tone: personality-forward but professional.',
+    sendhelp: 'VIBE: Send Help — Creative fever dream (but gorgeous). Unexpected fonts, bold colors. Headline is theatrical and witty. Tone: funny, self-aware, still selling skills.',
   };
 
   const tonalityInstructions = {
     professional: 'TONALITY: Professional — Measured, authoritative, no humor. Let achievements speak.',
-    conversational: 'TONALITY: Conversational — Warm, approachable, like talking to a smart friend. Light personality.',
-    bold: 'TONALITY: Bold — Confident, direct, unapologetic. Short sentences. Strong claims backed by numbers.',
-    witty: 'TONALITY: Witty — Clever, self-aware, slightly theatrical. Humor that shows intelligence, not clowning.',
-    storyteller: 'TONALITY: Storyteller — Narrative-driven. Build a journey arc. Make the reader feel invested in the candidate.',
+    conversational: 'TONALITY: Conversational — Warm, approachable, like talking to a smart friend.',
+    bold: 'TONALITY: Bold — Confident, direct, unapologetic. Short sentences. Strong claims.',
+    witty: 'TONALITY: Witty — Clever, self-aware, slightly theatrical. Smart humor.',
+    storyteller: 'TONALITY: Storyteller — Narrative-driven. Build a journey arc.',
   };
 
-  const userPrompt = `Analyze this resume and job description, then create a creative brief.
+  const userPrompt = `Analyze this resume and job description. Return a JSON creative brief.
 
 ${vibeInstructions[vibe] || vibeInstructions.showstopper}
 ${tonalityInstructions[tonality] || tonalityInstructions.conversational}
@@ -73,17 +35,44 @@ ${jd}
 
 ${roleTitle ? 'ROLE: ' + roleTitle : ''}
 ${hiringManager ? 'HIRING MANAGER: ' + hiringManager : ''}
-${companyUrl ? 'COMPANY URL (research their brand): ' + companyUrl : ''}
+${companyUrl ? 'COMPANY URL: ' + companyUrl : ''}
 
-CRITICAL INSTRUCTIONS:
-- The headline MUST be specific to this company and role. Never use "Hi, I'm [Name]" — find a clever angle.
-- Extract EVERY metric and number from the resume. List them all in the metrics array.
-- Map at least 5 JD requirements to specific candidate experiences with real numbers.
-- The 90-day plan must have specific, actionable items — not vague goals like "learn the product."
-- Research or infer the company's brand colors from their URL/name. Get as close as possible.
-- The tone sample should be 2-3 sentences that could appear on the actual page — this is the voice check.
+Return ONLY this JSON structure, nothing else — no markdown, no backticks, no explanation before or after:
 
-Return ONLY the JSON object. No markdown, no code blocks, no explanation.`;
+{
+  "headline": "A hero headline specific to this company (never generic like Hi I am X)",
+  "subheadline": "1-2 sentences expanding on the headline",
+  "hook": "The core narrative angle for this candidate at this company",
+  "colorPalette": {
+    "primary": "#hex from company brand",
+    "secondary": "#hex complementary accent",
+    "background": "#hex page bg",
+    "text": "#hex main text",
+    "muted": "#hex secondary text"
+  },
+  "fonts": {
+    "headline": "Google Font name",
+    "body": "Google Font name",
+    "mono": "Google Font name"
+  },
+  "sections": [
+    {"title": "Section name", "purpose": "What it does", "keyContent": "What goes in it"}
+  ],
+  "metrics": [
+    {"number": "$X", "label": "What it measures", "context": "Why it matters for this JD"}
+  ],
+  "experienceMatch": [
+    {"requirement": "From the JD", "candidateProof": "Matching experience with a specific number"}
+  ],
+  "ninetyDayPlan": {
+    "days30": ["Specific action 1", "Specific action 2", "Specific action 3"],
+    "days60": ["Specific action 1", "Specific action 2", "Specific action 3"],
+    "days90": ["Specific action 1", "Specific action 2", "Specific action 3"]
+  },
+  "toneSample": "2-3 sentences showing exactly how the copy will sound"
+}
+
+CRITICAL: Return ONLY the raw JSON. No markdown code blocks. No backticks. No text before or after. Start with { and end with }`;
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -96,7 +85,6 @@ Return ONLY the JSON object. No markdown, no code blocks, no explanation.`;
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4000,
-        system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
       }),
     });
@@ -108,7 +96,26 @@ Return ONLY the JSON object. No markdown, no code blocks, no explanation.`;
 
     const data = await response.json();
     const text = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
-    const cleaned = text.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
+
+    // Aggressive cleanup — strip markdown fencing, find the JSON object
+    let cleaned = text.trim();
+    cleaned = cleaned.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '');
+    cleaned = cleaned.trim();
+
+    // Find the first { and last } to extract just the JSON
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1) {
+      return new Response(JSON.stringify({ error: 'AI did not return valid JSON. Please try again.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    }
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+
+    // Validate it parses
+    try {
+      JSON.parse(cleaned);
+    } catch (e) {
+      return new Response(JSON.stringify({ error: 'AI returned malformed JSON. Please try again.' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+    }
 
     return new Response(cleaned, { headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
