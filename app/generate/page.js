@@ -46,13 +46,13 @@ const SECTIONS = [
     { id: 'interactive_tabs', name: 'Tabbed resume', desc: 'Tabbed interface for experience', icon: '__|' },
   ]},
   { category: 'Close', options: [
-    { id: 'why_company', name: 'Why this company', desc: 'Genuine connection to their mission', icon: '!' },
+    { id: 'why_company', name: 'Why this company', desc: 'Genuine connection to mission', icon: '!' },
     { id: 'personal', name: 'Personal touch', desc: 'Hobbies, interests, human side', icon: ':)' },
     { id: 'cta', name: 'Contact CTA', desc: 'Email, LinkedIn, call to action', icon: '@' },
   ]},
 ];
 
-const DEFAULT_SELECTED = ['hero_bold', 'metrics_cards', 'experience_cards', 'timeline', 'plan', 'why_company', 'cta'];
+const DEFAULT_SELECTED = ['hero_bold', 'metrics_cards', 'experience_cards', 'timeline', 'why_company', 'cta'];
 
 export default function GeneratePage() {
   const [step, setStep] = useState('loading');
@@ -69,22 +69,40 @@ export default function GeneratePage() {
   const [selectedSections, setSelectedSections] = useState(DEFAULT_SELECTED);
   const [building, setBuilding] = useState(false);
   const [buildStatus, setBuildStatus] = useState({});
+  const [buildStartTime, setBuildStartTime] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState('');
   const [generatedHTML, setGeneratedHTML] = useState('');
   const [designSystem, setDesignSystem] = useState(null);
+  const [savedPages, setSavedPages] = useState([]);
   const iframeRef = useRef(null);
+  const timerRef = useRef(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('unhinged_resume');
     const key = localStorage.getItem('unhinged_api_key');
+    const pages = JSON.parse(localStorage.getItem('unhinged_pages') || '[]');
     if (saved) { setResume(saved); setResumeSaved(true); }
     if (key) setApiKey(key);
+    setSavedPages(pages);
     const p = new URLSearchParams(window.location.search);
     if (p.get('jd')) setJd(decodeURIComponent(p.get('jd')));
     if (p.get('url')) setCompanyUrl(decodeURIComponent(p.get('url')));
     if (p.get('title')) setRoleTitle(decodeURIComponent(p.get('title')));
     setStep(saved ? 'input' : 'onboarding');
   }, []);
+
+  useEffect(() => {
+    if (building) {
+      setBuildStartTime(Date.now());
+      timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - Date.now()) / 1000)), 1000);
+      const start = Date.now();
+      timerRef.current = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 500);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [building]);
 
   function toggleSection(id) {
     setSelectedSections(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
@@ -96,64 +114,93 @@ export default function GeneratePage() {
     setResumeSaved(true); setError(''); setStep('input');
   }
 
+  function savePage(html) {
+    const page = {
+      id: Date.now().toString(36),
+      company: companyName || 'Unknown',
+      role: roleTitle || 'Application',
+      vibe, date: new Date().toISOString(),
+      html,
+    };
+    const pages = JSON.parse(localStorage.getItem('unhinged_pages') || '[]');
+    pages.unshift(page);
+    if (pages.length > 20) pages.pop();
+    localStorage.setItem('unhinged_pages', JSON.stringify(pages));
+    setSavedPages(pages);
+  }
+
+  async function streamSection(sectionType, design) {
+    const res = await fetch('/api/section', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey, sectionType, resume, jd, companyUrl,
+        companyName: companyName || '', roleTitle, hiringManager,
+        designSystem: design, tonality,
+      }),
+    });
+    if (!res.ok) throw new Error('Section ' + sectionType + ' failed');
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let html = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      html += decoder.decode(value, { stream: true });
+    }
+    return html.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '').trim();
+  }
+
   async function buildAll() {
     if (!apiKey) { setError('Add your API key.'); return; }
     if (!jd) { setError('Add the job description.'); return; }
     if (selectedSections.length === 0) { setError('Select at least one section.'); return; }
     localStorage.setItem('unhinged_api_key', apiKey);
-    setError(''); setBuilding(true); setBuildStatus({});
+    setError(''); setBuilding(true); setBuildStatus({}); setElapsed(0);
 
     try {
-      // Step 1: Generate design system
+      // Step 1: Design system
       setBuildStatus({ design: 'building' });
       const designRes = await fetch('/api/design', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, companyUrl, companyName: companyName || roleTitle?.split(' at ')?.[1] || '', vibe }),
+        body: JSON.stringify({ apiKey, companyUrl, companyName: companyName || '', vibe }),
       });
       if (!designRes.ok) { const e = await designRes.json(); throw new Error('Design: ' + (e.error || 'failed')); }
       const design = await designRes.json();
       setDesignSystem(design);
       setBuildStatus(prev => ({ ...prev, design: 'done' }));
 
-      // Step 2: Build each section
-      const orderedSections = [];
+      // Step 2: Build ALL sections in PARALLEL
+      const ordered = [];
       for (const cat of SECTIONS) {
         for (const opt of cat.options) {
-          if (selectedSections.includes(opt.id)) orderedSections.push(opt);
+          if (selectedSections.includes(opt.id)) ordered.push(opt.id);
         }
       }
 
-      const builtSections = [];
-      for (let i = 0; i < orderedSections.length; i++) {
-        const sec = orderedSections[i];
-        setBuildStatus(prev => ({ ...prev, [sec.id]: 'building' }));
+      // Mark all as building
+      const newStatus = { design: 'done' };
+      ordered.forEach(id => { newStatus[id] = 'building'; });
+      setBuildStatus(newStatus);
 
-        const secRes = await fetch('/api/section', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey, sectionType: sec.id, resume, jd, companyUrl,
-            companyName: companyName || '', roleTitle, hiringManager,
-            designSystem: design, tonality,
-          }),
-        });
-
-        if (!secRes.ok) {
-          setBuildStatus(prev => ({ ...prev, [sec.id]: 'error' }));
-          continue;
+      // Fire all in parallel
+      const promises = ordered.map(async (sectionId) => {
+        try {
+          const html = await streamSection(sectionId, design);
+          setBuildStatus(prev => ({ ...prev, [sectionId]: 'done' }));
+          return { id: sectionId, html, success: true };
+        } catch (e) {
+          setBuildStatus(prev => ({ ...prev, [sectionId]: 'error' }));
+          return { id: sectionId, html: '', success: false };
         }
+      });
 
-        const reader = secRes.body.getReader();
-        const decoder = new TextDecoder();
-        let html = '';
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          html += decoder.decode(value, { stream: true });
-        }
-        html = html.replace(/^```html?\n?/i, '').replace(/\n?```$/i, '').trim();
-        builtSections.push(html);
-        setBuildStatus(prev => ({ ...prev, [sec.id]: 'done' }));
-      }
+      const results = await Promise.all(promises);
+
+      // Collect in order
+      const builtSections = ordered.map(id => {
+        const r = results.find(r => r.id === id);
+        return r && r.success ? r.html : '';
+      }).filter(Boolean);
 
       // Step 3: Assemble
       setBuildStatus(prev => ({ ...prev, assemble: 'building' }));
@@ -168,8 +215,11 @@ export default function GeneratePage() {
       const finalHTML = await assembleRes.text();
       setGeneratedHTML(finalHTML);
       setBuildStatus(prev => ({ ...prev, assemble: 'done' }));
-      setStep('preview');
 
+      // Save to localStorage
+      savePage(finalHTML);
+
+      setStep('preview');
       setTimeout(() => {
         if (iframeRef.current) {
           iframeRef.current.src = URL.createObjectURL(new Blob([finalHTML], { type: 'text/html' }));
@@ -180,8 +230,9 @@ export default function GeneratePage() {
   }
 
   function copyHTML() { navigator.clipboard.writeText(generatedHTML); }
-  function downloadHTML() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([generatedHTML], { type: 'text/html' })); a.download = (roleTitle || 'page').toLowerCase().replace(/\s+/g, '-') + '.html'; a.click(); }
+  function downloadHTML() { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([generatedHTML], { type: 'text/html' })); a.download = (companyName || roleTitle || 'page').toLowerCase().replace(/\s+/g, '-') + '.html'; a.click(); }
   function openInTab() { window.open(URL.createObjectURL(new Blob([generatedHTML], { type: 'text/html' })), '_blank'); }
+  function loadSavedPage(page) { setGeneratedHTML(page.html); setStep('preview'); setTimeout(() => { if (iframeRef.current) iframeRef.current.src = URL.createObjectURL(new Blob([page.html], { type: 'text/html' })); }, 150); }
 
   const S = {
     input: { width: '100%', padding: '10px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', fontSize: 13, fontFamily: 'var(--font-body)', outline: 'none', fontWeight: 300 },
@@ -190,12 +241,16 @@ export default function GeneratePage() {
     hint: { fontSize: 11, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontWeight: 300, marginBottom: 10, display: 'block' },
   };
 
+  const totalSteps = selectedSections.length + 2;
+  const doneSteps = Object.values(buildStatus).filter(v => v === 'done').length;
+  const progressPct = building ? Math.round((doneSteps / totalSteps) * 100) : 0;
+
   // ─── PREVIEW ───
   if (step === 'preview') {
     return (
       <div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 24px', borderBottom: '1px solid var(--border)' }}>
-          <button onClick={() => { setStep('sections'); setGeneratedHTML(''); }} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer' }}>← Back</button>
+          <button onClick={() => { setStep('sections'); setGeneratedHTML(''); }} style={{ background: 'none', border: 'none', color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer' }}>← Build another</button>
           <div style={{ display: 'flex', gap: 6 }}>
             <button onClick={copyHTML} style={{ padding: '6px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>Copy</button>
             <button onClick={downloadHTML} style={{ padding: '6px 14px', background: '#fff', border: '1px solid var(--border)', borderRadius: 5, fontSize: 11, cursor: 'pointer', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>Download</button>
@@ -214,16 +269,16 @@ export default function GeneratePage() {
       <nav style={{ padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }}>
         <Link href="/" style={{ textDecoration: 'none', color: 'var(--text)' }}><span style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 22 }}>Unhinged</span></Link>
         <div style={{ display: 'flex', gap: 8 }}>
-          {['Resume', 'Details', 'Sections', 'Build'].map((s, i) => {
-            const steps = ['onboarding', 'input', 'sections', 'building'];
+          {['Resume', 'Details', 'Sections'].map((s, i) => {
+            const steps = ['onboarding', 'input', 'sections'];
             const current = steps.indexOf(step);
             const isDone = current > i;
             const isActive = current === i;
             return (
               <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 18, height: 18, borderRadius: '50%', background: isActive ? 'var(--accent)' : isDone ? 'var(--sage, #5A7A6A)' : 'var(--surface, #F0F0EB)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: isActive || isDone ? '#fff' : 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{isDone ? '\u2713' : i + 1}</div>
+                <div style={{ width: 18, height: 18, borderRadius: '50%', background: isActive ? 'var(--accent)' : isDone ? '#5A7A6A' : 'var(--surface, #F0F0EB)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: isActive || isDone ? '#fff' : 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{isDone ? '\u2713' : i + 1}</div>
                 <span style={{ fontSize: 11, color: isActive ? 'var(--text)' : 'var(--text-tertiary)', fontWeight: isActive ? 500 : 300 }}>{s}</span>
-                {i < 3 && <span style={{ color: 'var(--border)', fontSize: 10, marginLeft: 2 }}>/</span>}
+                {i < 2 && <span style={{ color: 'var(--border)', fontSize: 10 }}>/</span>}
               </div>
             );
           })}
@@ -232,7 +287,7 @@ export default function GeneratePage() {
 
       <div style={{ maxWidth: 660, margin: '0 auto', padding: '36px 24px' }}>
 
-        {/* ─── ONBOARDING ─── */}
+        {/* ONBOARDING */}
         {step === 'onboarding' && (<>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 300, marginBottom: 8 }}>First, your resume.</h1>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, marginBottom: 28 }}>Paste once. Saved locally. Used for every page.</p>
@@ -241,10 +296,10 @@ export default function GeneratePage() {
           <button onClick={saveResume} style={{ width: '100%', padding: 13, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 500, marginTop: 16 }}>Save and continue</button>
         </>)}
 
-        {/* ─── INPUT ─── */}
+        {/* INPUT */}
         {step === 'input' && (<>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 300, marginBottom: 8 }}>The role.</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, marginBottom: 24 }}>Tell us about the job. We will figure out the rest.</p>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, marginBottom: 24 }}>Tell us about the job.</p>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: '#EDF3F0', borderRadius: 6, marginBottom: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -254,11 +309,25 @@ export default function GeneratePage() {
             <button onClick={() => setStep('onboarding')} style={{ background: 'none', border: 'none', color: '#5A7A6A', fontSize: 11, cursor: 'pointer', textDecoration: 'underline', fontFamily: 'var(--font-mono)' }}>Edit</button>
           </div>
 
+          {/* Saved pages */}
+          {savedPages.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Previous pages</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {savedPages.slice(0, 5).map(p => (
+                  <button key={p.id} onClick={() => loadSavedPage(p)} style={{ padding: '6px 12px', background: 'var(--bg-warm, #F7F6F3)', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, cursor: 'pointer', color: 'var(--text-secondary)', fontWeight: 300 }}>
+                    {p.company} — {p.role}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div style={{ marginBottom: 18 }}><label style={S.label}>API Key</label><span style={S.hint}>console.anthropic.com</span><input type="password" placeholder="sk-ant-..." value={apiKey} onChange={e => setApiKey(e.target.value)} style={S.input} /></div>
           <div style={{ marginBottom: 18 }}><label style={S.label}>Job description *</label><textarea placeholder="Paste the full JD..." value={jd} onChange={e => setJd(e.target.value)} style={{ ...S.textarea, minHeight: 160 }} /></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
             <div><label style={S.label}>Company URL</label><input placeholder="https://..." value={companyUrl} onChange={e => setCompanyUrl(e.target.value)} style={S.input} /></div>
-            <div><label style={S.label}>Company name</label><input placeholder="Clay, Wispr Flow..." value={companyName} onChange={e => setCompanyName(e.target.value)} style={S.input} /></div>
+            <div><label style={S.label}>Company name</label><input placeholder="Clay, Wispr..." value={companyName} onChange={e => setCompanyName(e.target.value)} style={S.input} /></div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 24 }}>
             <div><label style={S.label}>Role title</label><input placeholder="Growth Lead" value={roleTitle} onChange={e => setRoleTitle(e.target.value)} style={S.input} /></div>
@@ -269,17 +338,17 @@ export default function GeneratePage() {
           <button onClick={() => { if (!apiKey) { setError('Add API key'); return; } if (!jd) { setError('Add JD'); return; } setError(''); setStep('sections'); }} style={{ width: '100%', padding: 13, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>Continue to section picker</button>
         </>)}
 
-        {/* ─── SECTIONS ─── */}
-        {(step === 'sections' || step === 'building') && (<>
+        {/* SECTIONS + BUILD */}
+        {step === 'sections' && (<>
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 300, marginBottom: 8 }}>Pick your sections.</h1>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, marginBottom: 24 }}>Choose what goes on your page. Each section is built individually for maximum quality.</p>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.7, fontWeight: 300, marginBottom: 24 }}>Each section is built individually by Claude Opus for maximum quality. Sections build in parallel.</p>
 
           {/* Vibe */}
           <div style={{ marginBottom: 20 }}>
             <label style={S.label}>Vibe</label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {VIBES.map(v => (
-                <button key={v.id} onClick={() => setVibe(v.id)} style={{ background: vibe === v.id ? v.bg : '#fff', border: '1.5px solid', borderColor: vibe === v.id ? v.color : 'var(--border)', borderRadius: 6, padding: '10px', cursor: 'pointer', textAlign: 'center', color: 'var(--text)' }}>
+                <button key={v.id} onClick={() => !building && setVibe(v.id)} style={{ background: vibe === v.id ? v.bg : '#fff', border: '1.5px solid', borderColor: vibe === v.id ? v.color : 'var(--border)', borderRadius: 6, padding: 10, cursor: building ? 'default' : 'pointer', textAlign: 'center', color: 'var(--text)' }}>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, color: v.color, marginBottom: 2 }}>{v.symbol}</div>
                   <div style={{ fontSize: 12, fontWeight: 500, color: vibe === v.id ? v.color : 'var(--text)' }}>{v.name}</div>
                 </button>
@@ -292,7 +361,7 @@ export default function GeneratePage() {
             <label style={S.label}>Tonality</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {TONES.map(t => (
-                <button key={t.id} onClick={() => setTonality(t.id)} style={{ padding: '6px 14px', borderRadius: 16, border: '1.5px solid', borderColor: tonality === t.id ? 'var(--accent)' : 'var(--border)', background: tonality === t.id ? 'var(--accent-light)' : '#fff', color: tonality === t.id ? 'var(--accent)' : 'var(--text-secondary)', fontSize: 12, cursor: 'pointer', fontWeight: tonality === t.id ? 500 : 300 }}>{t.name}</button>
+                <button key={t.id} onClick={() => !building && setTonality(t.id)} style={{ padding: '6px 14px', borderRadius: 16, border: '1.5px solid', borderColor: tonality === t.id ? 'var(--accent)' : 'var(--border)', background: tonality === t.id ? 'var(--accent-light)' : '#fff', color: tonality === t.id ? 'var(--accent)' : 'var(--text-secondary)', fontSize: 12, cursor: building ? 'default' : 'pointer', fontWeight: tonality === t.id ? 500 : 300 }}>{t.name}</button>
               ))}
             </div>
           </div>
@@ -300,7 +369,7 @@ export default function GeneratePage() {
           {/* Section picker */}
           {SECTIONS.map(cat => (
             <div key={cat.category} style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10, fontWeight: 400 }}>{cat.category}</div>
+              <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 10 }}>{cat.category}</div>
               <div style={{ display: 'grid', gridTemplateColumns: cat.options.length > 2 ? 'repeat(3, 1fr)' : cat.options.length === 1 ? '1fr' : 'repeat(2, 1fr)', gap: 6 }}>
                 {cat.options.map(opt => {
                   const selected = selectedSections.includes(opt.id);
@@ -309,13 +378,17 @@ export default function GeneratePage() {
                     <button key={opt.id} onClick={() => !building && toggleSection(opt.id)} style={{
                       background: selected ? 'var(--bg-warm, #F7F6F3)' : '#fff',
                       border: '1.5px solid', borderColor: selected ? 'var(--accent)' : 'var(--border)',
-                      borderRadius: 8, padding: '12px', cursor: building ? 'default' : 'pointer',
-                      textAlign: 'left', color: 'var(--text)', position: 'relative', transition: 'all 0.2s',
+                      borderRadius: 8, padding: 12, cursor: building ? 'default' : 'pointer',
+                      textAlign: 'left', color: 'var(--text)', position: 'relative',
                     }}>
                       {status && (
-                        <div style={{ position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: '50%', background: status === 'done' ? '#5A7A6A' : status === 'error' ? '#C4654A' : 'var(--accent)', animation: status === 'building' ? 'pulse 1s infinite' : 'none' }} />
+                        <div style={{ position: 'absolute', top: 8, right: 8 }}>
+                          {status === 'done' && <span style={{ color: '#5A7A6A', fontSize: 12 }}>{'\u2713'}</span>}
+                          {status === 'error' && <span style={{ color: '#C4654A', fontSize: 12 }}>{'\u2717'}</span>}
+                          {status === 'building' && <div style={{ width: 8, height: 8, borderRadius: '50%', border: '2px solid var(--accent)', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />}
+                        </div>
                       )}
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: selected ? 'var(--accent)' : 'var(--text-tertiary)', marginBottom: 4, fontWeight: 400 }}>{opt.icon}</div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: selected ? 'var(--accent)' : 'var(--text-tertiary)', marginBottom: 4 }}>{opt.icon}</div>
                       <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 2 }}>{opt.name}</div>
                       <div style={{ fontSize: 10, color: 'var(--text-tertiary)', fontWeight: 300, lineHeight: 1.4 }}>{opt.desc}</div>
                     </button>
@@ -325,23 +398,38 @@ export default function GeneratePage() {
             </div>
           ))}
 
-          {/* Build status */}
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+
+          {/* Progress bar during build */}
           {building && (
-            <div style={{ marginBottom: 16, padding: '14px 16px', background: 'var(--accent-light)', borderRadius: 8 }}>
-              <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500, marginBottom: 8 }}>Building your page...</div>
+            <div style={{ marginBottom: 16, background: 'var(--bg-warm, #F7F6F3)', borderRadius: 10, padding: '16px 20px', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 500 }}>Building your page...</span>
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>{elapsed}s / ~{selectedSections.length * 10 + 15}s est.</span>
+              </div>
+              <div style={{ height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden', marginBottom: 12 }}>
+                <div style={{ height: '100%', background: 'var(--accent)', borderRadius: 3, transition: 'width 0.5s ease', width: progressPct + '%' }} />
+              </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {buildStatus.design && (
-                  <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '3px 8px', borderRadius: 4, background: buildStatus.design === 'done' ? '#EDF3F0' : 'var(--accent-light)', color: buildStatus.design === 'done' ? '#5A7A6A' : 'var(--accent)' }}>Design {buildStatus.design === 'done' ? '\u2713' : '...'}</span>
+                {buildStatus.design !== undefined && (
+                  <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '3px 8px', borderRadius: 4, background: buildStatus.design === 'done' ? '#EDF3F0' : 'var(--accent-light)', color: buildStatus.design === 'done' ? '#5A7A6A' : 'var(--accent)' }}>
+                    Design {buildStatus.design === 'done' ? '\u2713' : '...'}
+                  </span>
                 )}
                 {selectedSections.map(id => {
                   const s = buildStatus[id];
                   const name = SECTIONS.flatMap(c => c.options).find(o => o.id === id)?.name || id;
-                  return s ? (
-                    <span key={id} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '3px 8px', borderRadius: 4, background: s === 'done' ? '#EDF3F0' : s === 'error' ? '#FAF0ED' : 'var(--accent-light)', color: s === 'done' ? '#5A7A6A' : s === 'error' ? '#C4654A' : 'var(--accent)' }}>{name} {s === 'done' ? '\u2713' : s === 'error' ? '\u2717' : '...'}</span>
-                  ) : null;
+                  if (!s) return null;
+                  return (
+                    <span key={id} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '3px 8px', borderRadius: 4, background: s === 'done' ? '#EDF3F0' : s === 'error' ? '#FAF0ED' : 'var(--accent-light)', color: s === 'done' ? '#5A7A6A' : s === 'error' ? '#C4654A' : 'var(--accent)' }}>
+                      {name} {s === 'done' ? '\u2713' : s === 'error' ? '\u2717' : '...'}
+                    </span>
+                  );
                 })}
-                {buildStatus.assemble && (
-                  <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '3px 8px', borderRadius: 4, background: buildStatus.assemble === 'done' ? '#EDF3F0' : 'var(--accent-light)', color: buildStatus.assemble === 'done' ? '#5A7A6A' : 'var(--accent)' }}>Assembly {buildStatus.assemble === 'done' ? '\u2713' : '...'}</span>
+                {buildStatus.assemble !== undefined && (
+                  <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '3px 8px', borderRadius: 4, background: buildStatus.assemble === 'done' ? '#EDF3F0' : 'var(--accent-light)', color: buildStatus.assemble === 'done' ? '#5A7A6A' : 'var(--accent)' }}>
+                    Assembly {buildStatus.assemble === 'done' ? '\u2713' : '...'}
+                  </span>
                 )}
               </div>
             </div>
@@ -349,18 +437,18 @@ export default function GeneratePage() {
 
           {error && <div style={{ marginBottom: 16, padding: '10px 14px', background: '#FAF0ED', borderRadius: 6, fontSize: 12, color: '#C4654A', fontFamily: 'var(--font-mono)' }}>{error}</div>}
 
-          <style>{`@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }`}</style>
-
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => setStep('input')} style={{ flex: 1, padding: 13, background: '#fff', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', fontSize: 13, fontWeight: 300 }}>← Back</button>
-            <button onClick={buildAll} disabled={building} style={{ flex: 2, padding: 13, background: building ? 'var(--surface)' : 'var(--accent)', color: building ? 'var(--text-tertiary)' : '#fff', border: 'none', borderRadius: 6, cursor: building ? 'wait' : 'pointer', fontSize: 13, fontWeight: 500 }}>
+            <button onClick={() => setStep('input')} disabled={building} style={{ flex: 1, padding: 13, background: '#fff', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, cursor: building ? 'default' : 'pointer', fontSize: 13, fontWeight: 300, opacity: building ? 0.5 : 1 }}>← Back</button>
+            <button onClick={buildAll} disabled={building} style={{ flex: 2, padding: 13, background: building ? 'var(--surface, #F0F0EB)' : 'var(--accent)', color: building ? 'var(--text-tertiary)' : '#fff', border: 'none', borderRadius: 6, cursor: building ? 'wait' : 'pointer', fontSize: 13, fontWeight: 500 }}>
               {building ? 'Building ' + selectedSections.length + ' sections...' : 'Build my page (' + selectedSections.length + ' sections)'}
             </button>
           </div>
 
-          <div style={{ marginTop: 16, fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 300 }}>
-            ~{selectedSections.length * 15 + 15}s build time / ~${(selectedSections.length * 0.15 + 0.10).toFixed(2)} API cost
-          </div>
+          {!building && (
+            <div style={{ marginTop: 12, fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 300 }}>
+              Parallel build ~{Math.max(selectedSections.length * 8, 20)}s / ~${(selectedSections.length * 0.25 + 0.15).toFixed(2)} with Opus
+            </div>
+          )}
         </>)}
       </div>
     </div>
