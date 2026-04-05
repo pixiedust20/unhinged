@@ -155,6 +155,14 @@ export default function GeneratePage() {
     if (firstTag > 0) html = html.substring(firstTag);
     const lastClose = html.lastIndexOf(">");
     if (lastClose > 0 && lastClose < html.length - 1) html = html.substring(0, lastClose + 1);
+    // Fix unclosed script tags
+    const openScripts = (html.match(/<script/gi) || []).length;
+    const closeScripts = (html.match(/<\/script>/gi) || []).length;
+    if (openScripts > closeScripts) {
+      for (let i = 0; i < openScripts - closeScripts; i++) {
+        html += "<\/script>";
+      }
+    }
     return html.trim();
   }
 
@@ -217,7 +225,7 @@ export default function GeneratePage() {
         body: JSON.stringify({
           designSystem: design, sections: builtSections,
           companyName, roleTitle,
-          candidateName: resume.split('\n')[0]?.trim() || 'Candidate',
+          candidateName: resume.split("\n").find(l => l.trim().length > 2 && l.trim().length < 50) || "Candidate",
         }),
       });
       const finalHTML = await assembleRes.text();
