@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Manrope:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400&display=swap');
+
+:root {
+  --bg: #FFFFFF;
+  --bg-warm: #F7F6F3;
+  --bg-card: #FAFAF8;
+  --surface: #F0F0EB;
+  --border: #E2E2DC;
+  --border-hover: #C8C8C0;
+  --text: #1A1A1A;
+  --text-secondary: #5A5A5A;
+  --text-tertiary: #9A9A94;
+  --accent: #3D5A80;
+  --accent-light: #E8EDF3;
+  --accent-hover: #2C4460;
+  --coral: #C4654A;
+  --coral-light: #FAF0ED;
+  --sage: #5A7A6A;
+  --sage-light: #EDF3F0;
+  --ochre: #A8853A;
+  --ochre-light: #F8F3E8;
+  --plum: #6A5A8A;
+  --plum-light: #F0EDF5;
+  --font-display: 'Cormorant Garamond', serif;
+  --font-body: 'Manrope', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-body); -webkit-font-smoothing: antialiased; font-weight: 400; }
+::selection { background: var(--accent-light); color: var(--accent); }
