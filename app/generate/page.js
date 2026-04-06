@@ -3,11 +3,12 @@
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 
-const VIBES = [
-  { id: 'boardroom', symbol: '\u2014', name: 'Boardroom', desc: 'Clean, editorial, data-forward', color: '#5A7A6A', bg: '#EDF3F0' },
-  { id: 'challenger', symbol: '/', name: 'Challenger', desc: 'Bold, dark, high-contrast', color: '#A8853A', bg: '#F8F3E8' },
-  { id: 'showstopper', symbol: '*', name: 'Showstopper', desc: 'Brand-matched, interactive, rich', color: '#6A5A8A', bg: '#F0EDF5' },
-  { id: 'sendhelp', symbol: '~', name: 'Send Help', desc: 'Creative chaos, unforgettable', color: '#C4654A', bg: '#FAF0ED' },
+const STYLES = [
+  { id: "editorial", symbol: "E", name: "Editorial", desc: "Light, elegant serif, magazine feel. Stripe, Clay, Linear.", color: "#5A7A6A", bg: "#EDF3F0" },
+  { id: "bold_dark", symbol: "B", name: "Bold Dark", desc: "Dark bg, heavy fonts, neon accent. Nike, Vercel.", color: "#3B82F6", bg: "#E8EDF3" },
+  { id: "warm_minimal", symbol: "W", name: "Warm Minimal", desc: "Cream, rounded, friendly. Notion, Figma.", color: "#A8853A", bg: "#F8F3E8" },
+  { id: "creative_studio", symbol: "C", name: "Creative Studio", desc: "Experimental layouts, mixed type. Awwwards energy.", color: "#6A5A8A", bg: "#F0EDF5" },
+  { id: "corporate_clean", symbol: "P", name: "Corporate Clean", desc: "Structured grid, professional, polished. McKinsey, Salesforce.", color: "#4A6A7A", bg: "#E8F0F3" },
 ];
 
 const TONES = [
@@ -64,7 +65,7 @@ export default function GeneratePage() {
   const [companyName, setCompanyName] = useState('');
   const [roleTitle, setRoleTitle] = useState('');
   const [hiringManager, setHiringManager] = useState('');
-  const [vibe, setVibe] = useState('showstopper');
+  const [style, setStyle] = useState('editorial');
   const [tonality, setTonality] = useState('conversational');
   const [selectedSections, setSelectedSections] = useState(DEFAULT_SELECTED);
   const [building, setBuilding] = useState(false);
@@ -119,7 +120,7 @@ export default function GeneratePage() {
       id: Date.now().toString(36),
       company: companyName || 'Unknown',
       role: roleTitle || 'Application',
-      vibe, date: new Date().toISOString(),
+      style, date: new Date().toISOString(),
       html,
     };
     const pages = JSON.parse(localStorage.getItem('unhinged_pages') || '[]');
@@ -135,7 +136,7 @@ export default function GeneratePage() {
       body: JSON.stringify({
         apiKey, sectionType, resume, jd, companyUrl,
         companyName: companyName || '', roleTitle, hiringManager,
-        designSystem: design, tonality,
+        designSystem: design, tonality, style,
       }),
     });
     if (!res.ok) throw new Error('Section ' + sectionType + ' failed');
@@ -178,7 +179,7 @@ export default function GeneratePage() {
       setBuildStatus({ design: 'building' });
       const designRes = await fetch('/api/design', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey, companyUrl, companyName: companyName || '', vibe }),
+        body: JSON.stringify({ apiKey, companyUrl, companyName: companyName || '', style }),
       });
       if (!designRes.ok) { const e = await designRes.json(); throw new Error('Design: ' + (e.error || 'failed')); }
       const design = await designRes.json();
@@ -361,12 +362,12 @@ export default function GeneratePage() {
 
           {/* Vibe */}
           <div style={{ marginBottom: 20 }}>
-            <label style={S.label}>Vibe</label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
-              {VIBES.map(v => (
-                <button key={v.id} onClick={() => !building && setVibe(v.id)} style={{ background: vibe === v.id ? v.bg : '#fff', border: '1.5px solid', borderColor: vibe === v.id ? v.color : 'var(--border)', borderRadius: 6, padding: 10, cursor: building ? 'default' : 'pointer', textAlign: 'center', color: 'var(--text)' }}>
+            <label style={S.label}>Style</label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
+              {STYLES.map(v => (
+                <button key={v.id} onClick={() => !building && setStyle(v.id)} style={{ background: style === v.id ? v.bg : '#fff', border: '1.5px solid', borderColor: style === v.id ? v.color : 'var(--border)', borderRadius: 6, padding: 10, cursor: building ? 'default' : 'pointer', textAlign: 'center', color: 'var(--text)' }}>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, color: v.color, marginBottom: 2 }}>{v.symbol}</div>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: vibe === v.id ? v.color : 'var(--text)' }}>{v.name}</div>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: style === v.id ? v.color : 'var(--text)' }}>{v.name}</div>
                 </button>
               ))}
             </div>
