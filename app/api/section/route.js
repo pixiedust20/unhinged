@@ -31,7 +31,7 @@ SECTION_PROMPTS.hero_story = {
 
 SECTION_PROMPTS.metrics_cards = {
   name: 'Metrics — Accent cards',
-  instruction: 'Build METRICS with accent-bordered cards. Section header with eyebrow + headline. Grid of 4-6 cards (2-3 columns responsive). Each: large number (32-40px headline font), label, optional context. Left border 3px accent. Numbers animate from 0 on scroll. Hover lift effect. COUNTER: function animateCounter(el){var t=parseFloat(el.dataset.target),d=1500,s=performance.now();function u(n){var p=Math.min((n-s)/d,1),e=1-Math.pow(1-p,3);el.textContent=(el.dataset.prefix||"")+Math.round(t*e).toLocaleString()+(el.dataset.suffix||"");if(p<1)requestAnimationFrame(u)}requestAnimationFrame(u)}'
+  instruction: 'Build COMPACT METRICS with accent-bordered cards. Section header: small eyebrow + ONE-LINE headline (max 60 chars). Grid of 4-6 cards in 3 columns (2 on mobile). Each card: number at 28-32px (NOT larger), label in mono 10px, ONE line of context. Left border 3px accent. Numbers animate on scroll. Cards have max-width and consistent height. Section max-height 70vh. DO NOT use oversized numbers. COUNTER: function animateCounter(el){var t=parseFloat(el.dataset.target),d=1500,s=performance.now();function u(n){var p=Math.min((n-s)/d,1),e=1-Math.pow(1-p,3);el.textContent=(el.dataset.prefix||"")+Math.round(t*e).toLocaleString()+(el.dataset.suffix||"");if(p<1)requestAnimationFrame(u)}requestAnimationFrame(u)}'
 };
 
 SECTION_PROMPTS.metrics_ribbon = {
@@ -41,22 +41,22 @@ SECTION_PROMPTS.metrics_ribbon = {
 
 SECTION_PROMPTS.metrics_inline = {
   name: 'Metrics — Inline narrative',
-  instruction: 'Build METRICS woven into narrative. 2-3 paragraphs where key numbers display at 36-48px inline in headline font with accent color. Text flows naturally, oversized numbers create visual rhythm.'
+  instruction: 'Build METRICS woven into narrative. 2-3 SHORT paragraphs (3-4 sentences each) where key numbers are styled in accent color and slightly larger (1.2em, NOT 36-48px). Numbers stay inline with text flow — same line height. Body text at 18-22px serif. Keep the section under 60vh. Do NOT make numbers tower over surrounding text.'
 };
 
 SECTION_PROMPTS.experience_cards = {
   name: 'Experience — Requirement cards',
-  instruction: 'Build EXPERIENCE MATCH with cards. Section header with eyebrow + headline. 2-column grid (single mobile). Each card: colored category label (mono uppercase), JD requirement as bold title, candidate proof with SPECIFIC metric, company tag at bottom. Hover lift + border change. Scroll reveal staggered 100ms. Minimum 5 cards.'
+  instruction: 'Build EXPERIENCE MATCH with cards. Section header: small eyebrow + short headline. 2-column grid (single mobile). Pick 5-6 STRONGEST matches only. Each card: colored category label (mono 10px), requirement as bold title (14px, max 2 lines), proof with ONE metric (13px body), company tag. Cards have consistent height. Card padding 20px. Hover lift. Scroll reveal staggered.'
 };
 
 SECTION_PROMPTS.experience_table = {
   name: 'Experience — Comparison table',
-  instruction: 'Build EXPERIENCE as comparison table. Two columns: What you need (JD) vs What I bring (resume). Each row maps requirement to proof with metric. Alternating row backgrounds. Hover highlights. Checkmark per row. Summary at bottom: X of Y matched.'
+  instruction: 'Build EXPERIENCE as comparison table. Two columns: What you need vs What I bring. MAXIMUM 6 rows (pick the 6 strongest matches). Each row: compact — requirement title (bold, 14px) on left, metric badge + 1-2 sentence proof on right. Row padding 16px. Alternating backgrounds. Checkmarks. Summary at bottom. The ENTIRE table should fit in 2 scrolls max on desktop. If the JD has more than 6 requirements, merge similar ones.'
 };
 
 SECTION_PROMPTS.timeline = {
   name: 'Career timeline',
-  instruction: 'Build vertical CAREER TIMELINE. 2px line on left. Each stop: colored dot, date (mono), company + role (bold headline font), ONE achievement with metric. Most recent at top with pulsing current indicator. Scroll reveal with 150ms stagger. One achievement per role, not a dump.'
+  instruction: 'Build vertical CAREER TIMELINE. 2px line on left. Include ALL roles from the resume (typically 3-4 + education). Each stop: colored dot, date (mono 11px), company name (headline font 20-24px, NOT larger), role (body 14px), ONE achievement sentence with metric. Achievement in a compact card (padding 16px). NO skill tags under each role — keep it clean. Most recent has pulsing current indicator. Scroll reveal. The entire timeline should fit in 2-3 scrolls.'
 };
 
 SECTION_PROMPTS.plan = {
@@ -66,7 +66,7 @@ SECTION_PROMPTS.plan = {
 
 SECTION_PROMPTS.why_company = {
   name: 'Why this company',
-  instruction: 'Build WHY THIS COMPANY section. Headline showing genuine understanding. 2-3 paragraphs referencing SPECIFIC things about company (product, mission, funding, market). NOT generic flattery. Serif headline, clean body (line-height 1.8). Optional pull quote in larger italic.'
+  instruction: 'Build WHY THIS COMPANY section. Short headline (1 line). TWO paragraphs max (4-5 sentences each). Reference SPECIFIC things about the company. NOT generic flattery. One optional pull quote. Serif headline, clean body. Section should fit in 1-1.5 scrolls. Do NOT write an essay — this is a love letter, not a thesis.'
 };
 
 SECTION_PROMPTS.interactive_simulator = {
@@ -86,12 +86,12 @@ SECTION_PROMPTS.interactive_tabs = {
 
 SECTION_PROMPTS.cta = {
   name: 'CTA — Contact',
-  instruction: 'Build CTA section. Headline creating energy specific to role. Email as mailto link. LinkedIn link. Optional: site, Substack. Subtle design element. Confident not desperate. Keep short.'
+  instruction: 'Build CTA section. ONE punchy headline (2 lines max). Email mailto link + LinkedIn link side by side. Optional one-line tagline. No stat ribbons, no proof points — those were in earlier sections. The CTA should fit in ONE viewport. Confident, minimal, done.'
 };
 
 SECTION_PROMPTS.personal = {
   name: 'Personal touch',
-  instruction: 'Build PERSONAL section. 3-5 items: hobbies, side projects, interests. Visual: small cards or tags, NOT paragraphs. Different background. Genuine and specific.'
+  instruction: 'Build PERSONAL section. 3-4 items max. Each item: emoji or icon + title (14px bold) + ONE sentence description (13px). Use a horizontal grid (3-4 columns on desktop). Different background. Section max-height 40vh. Keep it light and quick — the reader should spend 5 seconds here, not 30.'
 };
 
 export async function POST(request) {
@@ -133,7 +133,7 @@ export async function POST(request) {
     dsInfo = 'Colors: --primary:' + designSystem.palette.primary + '; --accent:' + designSystem.palette.accent + '; --bg:' + designSystem.palette.background + '; --bg-card:' + designSystem.palette.card + '; --text:' + designSystem.palette.text + '; --text-muted:' + designSystem.palette.muted + '; --border:' + designSystem.palette.border + '; Fonts: --font-headline:' + designSystem.fonts.headline + '; --font-body:' + designSystem.fonts.body + '; --font-mono:' + designSystem.fonts.mono;
   }
 
-  var systemPrompt = 'You are an elite frontend developer and designer. Build ONE section of a landing page. Your work wins design awards.\n\n' + section.instruction + '\n\n' + styleGuide + '\n\n' + toneGuide + '\n\nDESIGN SYSTEM (use these CSS variables already in :root):\n' + dsInfo + '\n\nRULES:\n1. Return ONLY a single <section> or <div>. No <!DOCTYPE>, <html>, <head>, <body>.\n2. Inline <style> inside section for animations. PREFIX all class names with section type.\n3. Use var() for ALL colors and fonts.\n4. Include <script> wrapped in IIFE: (function(){ ... })();\n5. ALWAYS close all <script> tags. Unclosed scripts break the page.\n6. Add class="reveal" on elements for scroll animation.\n7. Responsive: clamp() fonts, flexible grids, @media (max-width:768px).\n8. Use REAL content from resume and JD. Never placeholder text.\n9. Make it BEAUTIFUL. Every detail matters.';
+  var systemPrompt = 'You are an elite frontend developer and designer. Build ONE section of a landing page. Your work wins design awards.\n\n' + section.instruction + '\n\n' + styleGuide + '\n\n' + toneGuide + '\n\nDESIGN SYSTEM (use these CSS variables already in :root):\n' + dsInfo + '\n\nRULES:\n1. Return ONLY a single <section> or <div>. No <!DOCTYPE>, <html>, <head>, <body>.\n2. Inline <style> inside section for animations. PREFIX all class names with section type.\n3. Use var() for ALL colors and fonts.\n4. Include <script> wrapped in IIFE: (function(){ ... })();\n5. ALWAYS close all <script> tags. Unclosed scripts break the page.\n6. Add class="reveal" on elements for scroll animation.\n7. Responsive: clamp() fonts, flexible grids, @media (max-width:768px).\n8. Use REAL content from resume and JD. Never placeholder text.\n9. Make it BEAUTIFUL. Every detail matters.\n10. COMPACTNESS: Section padding max 60px vertical. No section should exceed 80vh on desktop. Reduce whitespace between elements. Use 2-column layouts to reduce scroll height. If showing metrics, use a compact ribbon or inline format — never oversized numbers that dominate the page.\n11. AVOID REPETITION: Do NOT repeat metrics or achievements that appear in other sections. Each section shows DIFFERENT content. If the hero already showed $1.71M pipeline, the metrics section must show DIFFERENT numbers.\n12. RESPONSIVE DENSITY: Body text 14-16px max. Card padding 16-24px max. Section gaps 40-60px max. Headings should never exceed 2 lines on desktop.';
 
   var userPrompt = 'Build the "' + section.name + '" section.\n\nRESUME:\n' + resume + '\n\nJOB DESCRIPTION:\n' + jd + '\n\nCompany: ' + (companyName || 'the company') + '\n' + (companyUrl ? 'URL: ' + companyUrl : '') + '\n' + (roleTitle ? 'Role: ' + roleTitle : '') + '\n' + (hiringManager ? 'Manager: ' + hiringManager : '') + '\n\nReturn ONLY the HTML section. Start with <section or <div. CLOSE ALL SCRIPT TAGS.';
 

@@ -106,7 +106,16 @@ export default function GeneratePage() {
   }, [building]);
 
   function toggleSection(id) {
-    setSelectedSections(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
+    const singleSelectCats = ["Hero", "Metrics", "Experience", "Interactive"];
+    const cat = SECTIONS.find(c => c.options.some(o => o.id === id));
+    setSelectedSections(prev => {
+      if (prev.includes(id)) return prev.filter(s => s !== id);
+      if (cat && singleSelectCats.includes(cat.category)) {
+        const siblings = cat.options.map(o => o.id);
+        return [...prev.filter(s => !siblings.includes(s)), id];
+      }
+      return [...prev, id];
+    });
   }
 
   function saveResume() {
